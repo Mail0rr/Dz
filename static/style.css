@@ -1,0 +1,20 @@
+a {
+    text-decoration: none;
+    color: #40A5E3;
+}
+a:hover {
+    text-decoration: underline;
+}
+.badge {
+    background_color: #F7F025;
+    color: white
+}
+.post-time {
+    background-color: #FF4F26;
+    color: white;
+}
+.flashes {
+    text-color: #9B2D30;
+    text-wide: 20px;
+    text-align: center;
+}

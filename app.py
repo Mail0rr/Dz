@@ -1,57 +1,84 @@
-from flask import Flask, request, render_template
-import requests
+from flask import Flask, render_template, request, redirect, url_for, flash
+from db import get_db_connection
+from init_db import create_mock_data
 
 app = Flask(__name__)
-
-pizzas = {
-    "Summer": [
-        ("Пеперони", "Перетертые томаты, моцарелла, салями пикантные пепперони. Аллергены: злаки, лактоза.", 305),
-        ("Гавайская", "Томатный соус, моцарелла, курица, ананасы. Аллергены: злаки, лактоза.", 320),
-        ("Маринара", "Томатный соус, чеснок, орегано, оливковое масло. Аллергены: злаки.", 250)
-    ],
-    "Winter": [
-        ("Сырная", "Моцарелла беби, фета, пармезан, горгонзола, проволоне, моцарелла. Аллергены: глютен, лактоза.", 280),
-        ("Мясная", "Томатный соус, моцарелла, бекон, ветчина, салями, сыр пармезан. Аллергены: злаки, лактоза.", 370),
-        ("Грибная", "Моцарелла, шампиньоны, сливочный соус, лук. Аллергены: злаки, лактоза.", 310)
-    ],
-    "Spring": [
-        ("Маргарита", "Перетертые томаты, моцарелла, базилик. Аллергены: злаки, лактоза.", 190),
-        ("Вегетарианская",
-         "Томатный соус, моцарелла, кабачки, баклажаны, болгарский перец, грибы. Аллергены: злаки, лактоза.", 270),
-        ("Цезарь",
-         "Томатный соус, моцарелла, куриное филе, салат айсберг, соус цезарь, пармезан. Аллергены: злаки, лактоза.", 340)
-    ]
-}
-
-def recommendation(temp):
-    if temp <= 5:
-        return pizzas["Winter"]
-    elif 5 < temp < 20:
-        return pizzas["Spring"]
-    elif temp >= 20:
-        return pizzas["Summer"]
-    else:
-        return None
+app.config["SECRET_KEY"] = "qwerty"
+create_mock_data()
 
 
-@app.route("/", methods=["GET", "POST"])
-def weather():
-    weather_data = None
-    pizza_recommendation = None
+@app.route("/")
+def index():
+    connection = get_db_connection()
+    menu_items = connection.execute("SELECT * FROM menu_items").fetchall()
+    connection.close()
+    return render_template("menu.html", menu_items=menu_items)
+
+
+@app.route("/create/", methods=["GET", "POST"])
+def create():
+    if request.method == "POST":
+        name = request.form["name"]
+        description = request.form["description"]
+        price = request.form["price"]
+
+        if not name or not price:
+            flash("Название и цена обязательны", "danger")
+            return render_template("create.html")
+
+        connection = get_db_connection()
+        connection.execute(
+            "INSERT INTO menu_items (name, description, price) VALUES (?, ?, ?)",
+            (name, description, price),
+        )
+        connection.commit()
+        connection.close()
+
+        flash("Пицца добавлена!", "success")
+        return redirect(url_for("index"))
+
+    return render_template("create.html")
+
+
+@app.route("/<int:item_id>/edit/", methods=["GET", "POST"])
+def edit(item_id):
+    connection = get_db_connection()
+    item = connection.execute(
+        "SELECT * FROM menu_items WHERE id = ?", (item_id,)
+    ).fetchone()
 
     if request.method == "POST":
-        location = request.form.get("location")
-        if location:
-            url = f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid=0ead5105eb0b05b10a0459b6fae480b1&units=metric"
-            response = requests.get(url)
-            if response.status_code == 200:
-                weather_data = response.json()
-                weather_main = weather_data["weather"][0]["main"].lower()
-                pizza_recommendation = recommendation(weather_main)
-            else:
-                weather_data = {"error": "Місто не знайдено або помилка в API."}
+        name = request.form["name"]
+        description = request.form["description"]
+        price = request.form["price"]
 
-    return render_template("main.html", weather=weather_data, pizza=pizza_recommendation)
+        if not name or not price:
+            flash("Название и цена обязательны!", "danger")
+            return render_template("edit.html", item=item)
+
+        connection.execute(
+            "UPDATE menu_items SET name = ?, description = ?, price = ? WHERE id = ?",
+            (name, description, price, item_id),
+        )
+        connection.commit()
+        connection.close()
+
+        flash("Пицца обновлена!", "success")
+        return redirect(url_for("index"))
+
+    return render_template("edit.html", item=item)
+
+
+@app.post("/<int:item_id>/delete/")
+def delete(item_id):
+    connection = get_db_connection()
+    connection.execute("DELETE FROM menu_items WHERE id = ?", (item_id,))
+    connection.commit()
+    connection.close()
+
+    flash("Блюдо успешно удалено!", "success")
+    return redirect(url_for("index"))
+
 
 if __name__ == "__main__":
-    app.run(port=5005, debug=True)
+    app.run(debug=True)
